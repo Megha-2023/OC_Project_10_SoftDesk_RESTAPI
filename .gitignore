@@ -1,0 +1,5 @@
+softenv/
+__pycache__
+authentication/__pycache__/
+projects/__pycache__/
+softdesk/__pycache__/
