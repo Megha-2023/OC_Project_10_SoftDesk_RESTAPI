@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class SoftapiConfig(AppConfig):
+class ProjectsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'softapi'
+    name = 'projects'
