@@ -16,7 +16,7 @@ class Projects(models.Model):
     description = models.TextField(max_length=500, blank=True)
     type = models.CharField(max_length=50, choices=TypeProject.choices)
     author = models.ForeignKey(to=Users, on_delete=models.CASCADE, related_name='+')
-    contributors = models.ManyToManyField(Users, through='Contributors')
+    contributors = models.ManyToManyField(Users, through='Contributors', blank=True)
 
 
 class Contributors(models.Model):
