@@ -14,22 +14,16 @@ class Projects(models.Model):
 
     title = models.CharField(max_length=120)
     description = models.TextField(max_length=500, blank=True)
-    type = models.CharField(max_length=50, choices=TypeProject.choices)
+    type = models.CharField(max_length=50, choices=TypeProject.choices, blank=True)
     author = models.ForeignKey(to=Users, on_delete=models.CASCADE, related_name='+')
     contributors = models.ManyToManyField(Users, through='Contributors', blank=True)
 
 
 class Contributors(models.Model):
     """ Class working as a Junction table between Users and Projects"""
-    PERMISSIONS = [('C', 'Create'),
-                   ('R', 'Read'),
-                   ('U', 'Update'),
-                   ('D', 'Delete')
-                   ]
     user = models.ForeignKey(to=Users, on_delete=models.CASCADE, related_name='+')
     project = models.ForeignKey(to=Projects, on_delete=models.CASCADE, related_name='+')
-    permission = models.CharField(max_length=25, choices=PERMISSIONS)
-    role = models.CharField(max_length=25)
+    role = models.CharField(max_length=25, blank=True)
 
     class Meta:
         """ Meta class"""
@@ -37,21 +31,21 @@ class Contributors(models.Model):
 
 
 class Issues(models.Model):
-    class Priority(models.TextChoices):    
+    class Priority(models.TextChoices):
         LOW = 'Low'
         MEDIUM = 'Medium'
         HIGH = 'High'
-    
+
     class Tags(models.TextChoices):
         BUG = 'Bug'
         ENHANCEMENT = 'Enhancement'
         TASK = 'Task'
-    
+
     class Status(models.TextChoices):
         TO_DO = 'To-Do'
         IN_PROGRESS = 'In_progress'
         COMPLETED = 'Completed'
-    
+
     title = models.CharField(max_length=200)
     description = models.TextField(max_length=500, blank=True)
     project = models.ForeignKey(to=Projects, on_delete=models.CASCADE, related_name='+')
