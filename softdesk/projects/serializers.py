@@ -29,21 +29,24 @@ class ProjectSerializer(serializers.ModelSerializer):
         return attrs
     
     def create(self, validated_data):
-        validated_data.pop("contributors", [])
+        contributors = validated_data.pop("contributors", [])
         # validated_data['author'] = self.current_user
         project_obj = Projects.objects.create(**validated_data)
         project_obj.contributors.add(project_obj.author_id,
                                      through_defaults={'role': 'Author'})
         # Contributors.objects.create(project_id=project_obj.id, user_id=project_obj.author_id, role="Author")
+        for contributor in contributors:
+            project_obj.contributors.add(contributor.id)
+
         return project_obj
     
-    def update(self, instance, validated_data):
+    """def update(self, instance, validated_data):
         contributors = validated_data.pop('contributors')
         instance.author = validated_data.get('author', instance.author)
         instance.save()
         super().update(instance, validated_data)
         return instance
-
+    """
     class Meta:
         model = Projects
         fields = ['id', 'title', 'description', 'author', 'contributors', 'type']

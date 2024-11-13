@@ -9,12 +9,14 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from authentication import auth_urls
-from projects.views import ProjectViewSet, ProjectContributorsAPIView
+from projects.views import ProjectViewSet  # , ProjectContributorsAPIView
 
 
 router = routers.DefaultRouter()
 router.register('projects', ProjectViewSet, basename='projects')
 
+#projects_users = ProjectViewSet.as_view({'get': 'get_users',
+#                                         'post': 'add_user'})
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -22,6 +24,5 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/', include(auth_urls.auth_urlpatterns)),
     path('api/', include(router.urls)),
-    path('api/projects/<int:id>/users/', ProjectContributorsAPIView.as_view(), name='project-contributors')
+    # path('api/projects/<int:id>/users/', projects_users, name='project-users')
 ]
-
