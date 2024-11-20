@@ -1,16 +1,15 @@
 from rest_framework.viewsets import ModelViewSet
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
-from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import NotFound
 from rest_framework.decorators import action
 from authentication.serializers import UserSerializer
 from authentication.models import Users
-from .models import Projects, Contributors
-from .serializers import ProjectSerializer, ContributorSerializer
-from .permissions import ProjectAuthentication
+from .models import Projects, Contributors, Issues, Comments
+from .serializers import ProjectSerializer, IssueSerializer
+from .permissions import ProjectAuthentication, IssueAuthentication
 
 
 class ProjectViewSet(ModelViewSet):
@@ -33,6 +32,16 @@ class ProjectViewSet(ModelViewSet):
 
     def get_queryset(self):
         return self.queryset.filter(author=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        partial = True
+        project = self.get_object()
+        serializer = self.get_serializer(project, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        #  return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         project = self.get_object()
@@ -67,25 +76,25 @@ class ProjectViewSet(ModelViewSet):
             return Response({"contributors": serializer.data,
                              "roles": users_role},
                             status=status.HTTP_200_OK)
-        
+    
         elif request.method == 'POST':
             if request.user != project.author:
                 raise PermissionDenied("Only author of the project can add contributors.")
             
-            user_id = request.data.get('contributors')
-            if not user_id:
+            contributor_id = request.data.get('contributors')
+            if not contributor_id:
                 return Response({"Error": "User ID is required"},
                                 status=status.HTTP_400_BAD_REQUEST)
             
             request.data['title'] = project.title
 
-            user_to_add = get_object_or_404(Users, id=user_id)
+            contributor_to_add = get_object_or_404(Users, id=contributor_id)
 
-            if user_to_add in project.contributors.all():
+            if contributor_to_add in project.contributors.all():
                 return Response({"message": "User is already a contributor"},
                                 status=status.HTTP_400_BAD_REQUEST)
             
-            project.contributors.add(user_to_add, through_defaults={'role': 'Contributor'})
+            project.contributors.add(contributor_to_add, through_defaults={'role': 'Contributor'})
             serializer = ProjectSerializer(project, data=request.data, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
@@ -101,12 +110,69 @@ class ProjectViewSet(ModelViewSet):
         if request.user != project.author:
             raise PermissionDenied("Only author of the project can remove contributor")
         
-        user_to_remove = get_object_or_404(Users, id=user_id)
-        if user_to_remove not in project.contributors.all():
+        contributor_to_remove = get_object_or_404(Users, id=user_id)
+        if contributor_to_remove not in project.contributors.all():
             return Response({"Error": "User is not contributor of this project"},
                             status=status.HTTP_400_BAD_REQUEST)
         
-        project.contributors.remove(user_to_remove)
+        project.contributors.remove(contributor_to_remove)
         return Response({"message": "User removed from the project"},
                         status=status.HTTP_200_OK)
         
+
+class IssueViewSet(ModelViewSet):
+    serializer_class = IssueSerializer
+    permission_classes = [IssueAuthentication]
+    queryset = Issues.objects.all()
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        project_id = self.kwargs.get('project_id')
+        if project_id is not None:
+            if not Projects.objects.filter(id=project_id).exists():
+                raise NotFound("Project does not exist")
+            return self.queryset.filter(project=project_id)
+        return self.queryset
+    
+    def get_object(self):
+        project_id = self.kwargs.get('project_id')
+        issue_id = self.kwargs.get('issue_id')
+
+        issue_obj = Issues.objects.get(id=issue_id, project=project_id)
+        if issue_obj:
+            return issue_obj
+        else:
+            raise NotFound("Issue does not exist in the project")
+
+    def perform_create(self, serializer):
+        serializer.save(issue_author=self.request.user)
+    
+    def update(self, request, *args, **kwargs):
+        
+        issue = self.get_object()
+
+        self.check_object_permissions(request, issue)
+
+        issue_assignee_id = request.data.get('issue_assignee')
+        if issue_assignee_id:
+            assignee_user = Users.objects.get(id=issue_assignee_id)
+            
+            if assignee_user not in issue.project.contributors.all():
+                raise PermissionDenied("Assignee User must be contributor of the project")
+            issue.issue_assignee = assignee_user
+        
+        partial = True
+        serializer = self.get_serializer(issue, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def destroy(self, request, *args, **kwargs):
+        issue = self.get_object()
+        
+        self.check_object_permissions(request, issue)
+        super().destroy(request, *args, **kwargs)
+        return Response({
+            'Message': 'Project has been deleted successfully'
+        }, status=status.HTTP_200_OK)

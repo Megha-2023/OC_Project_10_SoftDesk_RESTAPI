@@ -1,8 +1,8 @@
 from rest_framework.permissions import BasePermission
+from .models import Projects
 
 
 class ProjectAuthentication(BasePermission):
-    message = "You have to be the author to update or delete."
 
     def has_permission(self, request, view):
         print(f"Checking general permissions: {request.user}")
@@ -20,3 +20,23 @@ class ProjectAuthentication(BasePermission):
             return request.user == obj.author
         
         return request.user == obj.author
+
+
+class IssueAuthentication(BasePermission):
+    
+    def has_permission(self, request, view):
+        if request.method == 'POST':
+            if hasattr(view, 'kwargs') and 'project_id' in view.kwargs:
+                project_id = view.kwargs['project_id']
+            project = Projects.objects.get(id=project_id)
+            return request.user in project.contributors.all()
+        return request.user.is_authenticated
+    
+    def has_object_permission(self, request, view, obj):
+        if request.method == 'GET':
+            return request.user in obj.project.contributors.all()
+        
+        elif request.method in ['PUT', 'DELETE']:
+            return request.user == obj.issue_author
+        
+        return False

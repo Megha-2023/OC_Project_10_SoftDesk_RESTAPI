@@ -48,12 +48,12 @@ class Issues(models.Model):
 
     title = models.CharField(max_length=200)
     description = models.TextField(max_length=500, blank=True)
-    project = models.ForeignKey(to=Projects, on_delete=models.CASCADE, related_name='+')
-    tag = models.CharField(max_length=50, choices=Tags.choices)
-    priority = models.CharField(max_length=50, choices=Priority.choices)
-    status = models.CharField(max_length=50, choices=Status.choices)
-    author = models.ForeignKey(to=Users, on_delete=models.CASCADE, related_name='+')
-    assignee_user = models.ForeignKey(to=Users, on_delete=models.CASCADE, blank=True, related_name='+')
+    project = models.ForeignKey(to=Projects, on_delete=models.CASCADE, related_name='project_id')
+    tag = models.CharField(max_length=50, choices=Tags.choices, default=Tags.TASK)
+    priority = models.CharField(max_length=50, choices=Priority.choices, default=Priority.LOW)
+    status = models.CharField(max_length=50, choices=Status.choices, default=Status.TO_DO)
+    issue_author = models.ForeignKey(to=Users, on_delete=models.CASCADE, related_name='issue_author')
+    issue_assignee = models.ForeignKey(to=Users, on_delete=models.CASCADE, blank=True, related_name='issue_assignee')
     created_time = models.DateTimeField(auto_now_add=True)
 
 

@@ -9,14 +9,17 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from authentication import auth_urls
-from projects.views import ProjectViewSet  # , ProjectContributorsAPIView
+from projects.views import ProjectViewSet, IssueViewSet  
 
 
 router = routers.DefaultRouter()
 router.register('projects', ProjectViewSet, basename='projects')
+router.register('issues', IssueViewSet, basename='issues')
 
-#projects_users = ProjectViewSet.as_view({'get': 'get_users',
-#                                         'post': 'add_user'})
+projects_issues_get_post = IssueViewSet.as_view({'get': 'list',
+                                                'post': 'create'})
+projects_issues_put_delete = IssueViewSet.as_view({'put': 'update',
+                                                   'delete': 'destroy'})
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -24,5 +27,6 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/', include(auth_urls.auth_urlpatterns)),
     path('api/', include(router.urls)),
-    # path('api/projects/<int:id>/users/', projects_users, name='project-users')
+    path('api/projects/<int:project_id>/issues/', projects_issues_get_post, name='project-issues-get-create'),
+    path('api/projects/<int:project_id>/issues/<int:issue_id>', projects_issues_put_delete, name='project-issues-put-delete')
 ]
