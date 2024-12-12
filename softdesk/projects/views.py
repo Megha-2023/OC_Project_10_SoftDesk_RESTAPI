@@ -8,8 +8,8 @@ from rest_framework.decorators import action
 from authentication.serializers import UserSerializer
 from authentication.models import Users
 from .models import Projects, Contributors, Issues, Comments
-from .serializers import ProjectSerializer, IssueSerializer
-from .permissions import ProjectAuthentication, IssueAuthentication
+from .serializers import ProjectSerializer, IssueSerializer, CommentSerializer
+from .permissions import ProjectAuthentication, IssueAuthentication, CommentAuthentication
 
 
 class ProjectViewSet(ModelViewSet):
@@ -41,7 +41,6 @@ class ProjectViewSet(ModelViewSet):
         self.perform_update(serializer)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-        #  return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         project = self.get_object()
@@ -76,16 +75,16 @@ class ProjectViewSet(ModelViewSet):
             return Response({"contributors": serializer.data,
                              "roles": users_role},
                             status=status.HTTP_200_OK)
-    
+
         elif request.method == 'POST':
             if request.user != project.author:
                 raise PermissionDenied("Only author of the project can add contributors.")
-            
+
             contributor_id = request.data.get('contributors')
             if not contributor_id:
                 return Response({"Error": "User ID is required"},
                                 status=status.HTTP_400_BAD_REQUEST)
-            
+
             request.data['title'] = project.title
 
             contributor_to_add = get_object_or_404(Users, id=contributor_id)
@@ -93,7 +92,7 @@ class ProjectViewSet(ModelViewSet):
             if contributor_to_add in project.contributors.all():
                 return Response({"message": "User is already a contributor"},
                                 status=status.HTTP_400_BAD_REQUEST)
-            
+
             project.contributors.add(contributor_to_add, through_defaults={'role': 'Contributor'})
             serializer = ProjectSerializer(project, data=request.data, context={'request': request})
             if serializer.is_valid():
@@ -109,16 +108,16 @@ class ProjectViewSet(ModelViewSet):
 
         if request.user != project.author:
             raise PermissionDenied("Only author of the project can remove contributor")
-        
+
         contributor_to_remove = get_object_or_404(Users, id=user_id)
         if contributor_to_remove not in project.contributors.all():
             return Response({"Error": "User is not contributor of this project"},
                             status=status.HTTP_400_BAD_REQUEST)
-        
+
         project.contributors.remove(contributor_to_remove)
         return Response({"message": "User removed from the project"},
                         status=status.HTTP_200_OK)
-        
+
 
 class IssueViewSet(ModelViewSet):
     serializer_class = IssueSerializer
@@ -128,51 +127,124 @@ class IssueViewSet(ModelViewSet):
 
     def get_queryset(self):
         project_id = self.kwargs.get('project_id')
-        if project_id is not None:
-            if not Projects.objects.filter(id=project_id).exists():
-                raise NotFound("Project does not exist")
-            return self.queryset.filter(project=project_id)
-        return self.queryset
-    
+
+        if not Projects.objects.filter(id=project_id).exists():
+            raise NotFound("Project does not exist")
+
+        # Check if logged-in user is contributor of the project
+        project = Projects.objects.get(id=project_id)
+        if self.request.user not in project.contributors.all():
+            raise PermissionDenied("You are not a contributor of this project")
+
+        return self.queryset.filter(project=project_id)
+
     def get_object(self):
         project_id = self.kwargs.get('project_id')
         issue_id = self.kwargs.get('issue_id')
-
         issue_obj = Issues.objects.get(id=issue_id, project=project_id)
-        if issue_obj:
-            return issue_obj
-        else:
-            raise NotFound("Issue does not exist in the project")
+        return issue_obj
 
     def perform_create(self, serializer):
         serializer.save(issue_author=self.request.user)
-    
-    def update(self, request, *args, **kwargs):
-        
-        issue = self.get_object()
 
+    def update(self, request, *args, **kwargs):
+        try:
+            issue = self.get_object()
+        except Issues.DoesNotExist:
+            return Response({'message': "Issue number does not exist in this project"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Explicitly check object permission for PUT method
         self.check_object_permissions(request, issue)
 
+        # if issue_assignee id is passed, check whether the user is in contributors list or not
         issue_assignee_id = request.data.get('issue_assignee')
         if issue_assignee_id:
             assignee_user = Users.objects.get(id=issue_assignee_id)
-            
+
             if assignee_user not in issue.project.contributors.all():
                 raise PermissionDenied("Assignee User must be contributor of the project")
             issue.issue_assignee = assignee_user
-        
+
+        # Enable partial updation of fields
         partial = True
         serializer = self.get_serializer(issue, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-    
+
     def destroy(self, request, *args, **kwargs):
-        issue = self.get_object()
-        
+        try:
+            issue = self.get_object()
+        except Issues.DoesNotExist:
+            return Response({'message': "Issue does not exist in this project"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Explicitly check object permission for DELETE method
         self.check_object_permissions(request, issue)
         super().destroy(request, *args, **kwargs)
         return Response({
-            'Message': 'Project has been deleted successfully'
+            'Message': 'Issue has been deleted successfully'
+        }, status=status.HTTP_200_OK)
+
+
+class CommentViewSet(ModelViewSet):
+    serializer_class = CommentSerializer
+    permission_classes = [CommentAuthentication]
+    queryset = Comments.objects.all()
+    lookup_field = 'id'
+
+
+    def get_queryset(self):
+        project_id = self.kwargs.get('project_id')
+        issue_id = self.kwargs.get('issue_id')
+
+        if not Projects.objects.filter(id=project_id).exists():
+            raise NotFound("Project does not exist")
+
+        if not Issues.objects.filter(id=issue_id, project=project_id).exists():
+            raise NotFound("Issue does not exist in this project")
+
+        # Check if logged-in user is contributor of the project
+        project = Projects.objects.get(id=project_id)
+        if self.request.user not in project.contributors.all():
+            raise PermissionDenied("You are not a contributor of this project")
+
+        return self.queryset.filter(issue=issue_id)
+
+    def perform_create(self, serializer):
+        issue_id = self.kwargs.get('issue_id')
+        serializer.save(comment_author=self.request.user, issue=issue_id)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            comment_obj = self.get_object()
+        except Comments.DoesNotExist:
+            return Response({'message': "Comment does not exist in this issue"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Explicitly check object permission for PUT method
+        self.check_object_permissions(request, comment_obj)
+
+        # Enable partial updation of fields
+        partial = True
+        serializer = self.get_serializer(comment_obj, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            comment_obj = self.get_object()
+        except Comments.DoesNotExist:
+            return Response({'message': "Comment does not exist in this issue"},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Explicitly check object permission for DELETE method
+        self.check_object_permissions(request, comment_obj)
+        super().destroy(request, *args, **kwargs)
+        return Response({
+            'Message': 'Comment has been deleted successfully'
         }, status=status.HTTP_200_OK)
