@@ -19,9 +19,13 @@ class ProjectViewSet(ModelViewSet):
     lookup_field = 'id'
 
     def retrieve(self, request, id=None):
+        queryset = Projects.objects.filter(id=id)
+        if not queryset:
+            return Response({'Error': 'Project does not exist'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         project_user = Contributors.objects.filter(project=id, user=request.user)
         if project_user:
-            queryset = Projects.objects.filter(id=id)
             serializer = ProjectSerializer(queryset, many=True)
             return Response(
                 serializer.data, status=status.HTTP_200_OK
@@ -33,9 +37,21 @@ class ProjectViewSet(ModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(author=self.request.user)
 
+    def get_object(self):
+        project_id = self.kwargs.get('id')
+        project_obj = Projects.objects.get(id=project_id)
+        return project_obj
+
     def update(self, request, *args, **kwargs):
+        try:
+            project = self.get_object()
+        except Projects.DoesNotExist:
+            return Response({'message': "Project number does not exist."},
+                            status=status.HTTP_404_NOT_FOUND)
+        
+        self.check_object_permissions(request, project)
+
         partial = True
-        project = self.get_object()
         serializer = self.get_serializer(project, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -43,16 +59,17 @@ class ProjectViewSet(ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
-        project = self.get_object()
-        if project.author == request.user:
-            super().destroy(request, *args, **kwargs)
-            return Response({
+        try:
+            project = self.get_object()
+        except Projects.DoesNotExist:
+            return Response({'message': "Project number does not exist."},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        self.check_object_permissions(request, project)
+        super().destroy(request, *args, **kwargs)
+        return Response({
                 'Message': 'Project has been deleted successfully'
             }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'Message': 'You do not have permission to delete the project'
-            }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['get', 'post'], url_path='users')
     def get_or_add_users(self, request, id=None):
@@ -134,7 +151,7 @@ class IssueViewSet(ModelViewSet):
         # Check if logged-in user is contributor of the project
         project = Projects.objects.get(id=project_id)
         if self.request.user not in project.contributors.all():
-            raise PermissionDenied("You are not a contributor of this project")
+            raise PermissionDenied("Issues can only be viewed only by contributors of the project")
 
         return self.queryset.filter(project=project_id)
 
@@ -195,7 +212,6 @@ class CommentViewSet(ModelViewSet):
     queryset = Comments.objects.all()
     lookup_field = 'id'
 
-
     def get_queryset(self):
         project_id = self.kwargs.get('project_id')
         issue_id = self.kwargs.get('issue_id')
@@ -209,9 +225,9 @@ class CommentViewSet(ModelViewSet):
         # Check if logged-in user is contributor of the project
         project = Projects.objects.get(id=project_id)
         if self.request.user not in project.contributors.all():
-            raise PermissionDenied("You are not a contributor of this project")
+            raise PermissionDenied("Comments can only be viewed by contributors of the project")
 
-        return self.queryset.filter(issue=issue_id)
+        return self.queryset.filter(issue__id=issue_id, issue__project__id=project_id)
 
     def perform_create(self, serializer):
         issue_id = self.kwargs.get('issue_id')

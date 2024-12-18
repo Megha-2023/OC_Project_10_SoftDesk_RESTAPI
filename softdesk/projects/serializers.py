@@ -1,15 +1,10 @@
 from rest_framework import serializers
 from django.core.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound
+from django.shortcuts import get_object_or_404
 from authentication.models import Users
-from .models import Projects, Contributors, Issues, Comments
+from .models import Projects, Issues, Comments
 from authentication.serializers import UserSerializer
-
-
-class ContributorSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Contributors
-        fields = '__all__'
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -66,13 +61,10 @@ class IssueSerializer(serializers.ModelSerializer):
         serializer = ProjectSerializer(queryset)
         return serializer.data['id']
 
-    """def validate(self, attrs):
-        attrs["issue_author"] = self.context["request"].user
-        return attrs"""
-
     def create(self, validated_data):
         project_id = self.context['view'].kwargs.get('project_id')
-        project_obj = Projects.objects.get(id=project_id)
+        project_obj = get_object_or_404(Projects, id=project_id)
+    
         validated_data['project'] = project_obj
         data_passed = self.context['request'].data
         # check if the assignee user is in contributors list or not
@@ -81,7 +73,7 @@ class IssueSerializer(serializers.ModelSerializer):
             assignee_user = Users.objects.get(id=issue_assignee_id)
             if assignee_user not in project_obj.contributors.all():
                 raise PermissionDenied("Assignee User must be contributor of the project")
-            validated_data['issue_assignee'] = assignee_user    
+            validated_data['issue_assignee'] = assignee_user
         else:
             validated_data['issue_assignee'] = validated_data['issue_author']
 
@@ -110,19 +102,21 @@ class CommentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         issue_id = self.context['view'].kwargs.get('issue_id')
-        issue_obj = Issues.objects.get(id=issue_id)
-        validated_data['issue'] = issue_obj
+        issue_obj = get_object_or_404(Issues, id=issue_id)
         
-        project_obj = Projects.objects.get(id=issue_obj.project.id)
-        # data_passed = self.context['request'].data
+        project_id = self.context['view'].kwargs.get('project_id')
+        project_obj = get_object_or_404(Projects, id=project_id)
+
+        if project_id != issue_obj.project.id:
+            raise NotFound("Issue does not exist in this project")
+        
         logged_in_user = self.context['request'].user
-        # comment_author_id = data_passed.get('comment_author')
-        # if logged_in_user:
-            # comment_author = Users.objects.get(id=comment_author_id)
-        #if logged_in_user not in project_obj.contributors.all():
-        #    raise PermissionDenied("Comment can be created only by project contributors")
-        validated_data['comment_author'] = logged_in_user
         
+        if logged_in_user not in project_obj.contributors.all() or logged_in_user != issue_obj.issue_author:
+            raise PermissionDenied("Comment can be created only by project contributors and issue author")
+        
+        validated_data['comment_author'] = logged_in_user
+        validated_data['issue'] = issue_obj
         comment_obj = Comments.objects.create(**validated_data)
         return comment_obj
 

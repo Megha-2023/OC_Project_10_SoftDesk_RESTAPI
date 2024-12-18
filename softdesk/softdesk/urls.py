@@ -22,7 +22,8 @@ projects_issues_put_delete = IssueViewSet.as_view({'put': 'update',
 issue_comments_get_post = CommentViewSet.as_view({'get': 'list',
                                                 'post': 'create'})
 issue_comments_put_delete = CommentViewSet.as_view({'put': 'update',
-                                                'delete': 'destroy'})
+                                                'delete': 'destroy',
+                                                'get': 'retrieve'})
 
 
 urlpatterns = [
